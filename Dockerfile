@@ -13,8 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create directory for data persistence
-RUN mkdir -p /app/data
+# Copy and set permissions for entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-# Run the bot
-CMD ["python", "bot.py"]
+# Use entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
