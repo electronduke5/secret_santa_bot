@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  santa-bot:
+    build: .
+    container_name: santa-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Mount data.json for persistence
+      - ./data.json:/app/data.json
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

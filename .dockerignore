@@ -1,11 +1,9 @@
-# Environment variables
-.env
-
-# Data storage
-data.json
+# Git
+.git
+.gitignore
 
 # Python
-__pycache__/
+__pycache__
 *.py[cod]
 *$py.class
 *.so
@@ -43,4 +41,12 @@ ENV/
 Thumbs.db
 
 # Docker
+Dockerfile
+docker-compose.yml
 docker-compose.override.yml
+
+# Documentation
+README.md
+
+# Data files (will be mounted as volume)
+data.json
