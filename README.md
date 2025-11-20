@@ -25,6 +25,54 @@ pip3 install -r requirements.txt
 python3 bot.py
 ```
 
+## Запуск с Docker
+
+### Требования
+- Docker
+- Docker Compose
+
+### Инструкция
+
+1. **ВАЖНО**: Создайте файл `data.json` перед первым запуском:
+```bash
+echo '{"groups": {}}' > data.json
+```
+Это необходимо, чтобы Docker не создал `data.json` как директорию.
+
+2. Убедитесь, что файл `.env` настроен с вашим токеном бота:
+```bash
+cp .env.example .env
+# Отредактируйте .env и добавьте свой BOT_TOKEN
+```
+
+3. Запустите бота в Docker:
+```bash
+docker-compose up -d --build
+```
+
+### Полезные команды Docker
+
+```bash
+# Просмотр логов
+docker-compose logs -f
+
+# Остановка бота
+docker-compose down
+
+# Перезапуск бота
+docker-compose restart
+
+# Пересборка после изменений в коде
+docker-compose up -d --build
+```
+
+### Преимущества Docker
+
+- Изолированная среда выполнения
+- Не нужно устанавливать Python и зависимости на хост-машину
+- Автоматический перезапуск при сбоях
+- Данные сохраняются между перезапусками в `data.json`
+
 ## Структура проекта
 
 ```
@@ -39,9 +87,15 @@ santa-bot/
 │   ├── groups.py      # Управление группами
 │   └── santa.py       # Распределение участников
 ├── .env               # Токен бота
+├── .env.example       # Пример файла с переменными окружения
 ├── .gitignore         # Игнорируемые файлы
+├── .dockerignore      # Файлы, исключаемые из Docker образа
+├── Dockerfile         # Конфигурация Docker образа
+├── docker-compose.yml # Конфигурация Docker Compose
+├── entrypoint.sh      # Скрипт запуска в Docker
 ├── data.json          # База данных (JSON)
-└── requirements.txt   # Зависимости
+├── requirements.txt   # Зависимости
+└── README.md          # Документация
 ```
 
 ## Использование
