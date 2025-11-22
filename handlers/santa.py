@@ -84,7 +84,12 @@ async def confirm_distribution(callback: CallbackQuery):
     for giver_id, assignment in group["assignments"].items():
         giver_info = group["participants"][giver_id]
         try:
-            receiver_id = assignment["receiver_id"]
+            # Обратная совместимость: если assignment это строка (старый формат)
+            if isinstance(assignment, str):
+                receiver_id = assignment
+            else:
+                receiver_id = assignment["receiver_id"]
+
             recipient_info = group["participants"][receiver_id]
 
             username_text = f"@{recipient_info['username']}" if recipient_info['username'] else ""

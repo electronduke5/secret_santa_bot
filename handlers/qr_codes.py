@@ -106,7 +106,13 @@ async def upload_qr_photo(message: Message, state: FSMContext, bot: Bot):
             # Отправляем уведомление получателю подарка
             try:
                 assignment = group["assignments"][str(message.from_user.id)]
-                receiver_id = assignment["receiver_id"]
+
+                # Обратная совместимость: если assignment это строка (старый формат)
+                if isinstance(assignment, str):
+                    receiver_id = assignment
+                else:
+                    receiver_id = assignment["receiver_id"]
+
                 receiver_info = group["participants"][receiver_id]
 
                 await bot.send_message(
