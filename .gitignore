@@ -4,6 +4,9 @@
 # Data storage
 data.json
 
+# QR codes storage
+qr_codes/
+
 # Python
 __pycache__/
 *.py[cod]

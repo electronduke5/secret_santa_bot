@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
-from handlers import start, groups, santa
+from handlers import start, groups, santa, qr_codes
 import database as db
 
 # Logging setup
@@ -30,6 +30,7 @@ async def main():
     dp.include_router(start.router)
     dp.include_router(groups.router)
     dp.include_router(santa.router)
+    dp.include_router(qr_codes.router)
 
     # Start bot
     logger.info("Secret Santa bot started!")

@@ -165,7 +165,10 @@ def distribute_santa(invite_code: str) -> bool:
     for i in range(len(shuffled)):
         giver = shuffled[i]
         receiver = shuffled[(i + 1) % len(shuffled)]
-        assignments[giver] = receiver
+        assignments[giver] = {
+            "receiver_id": receiver,
+            "qr_code_path": None
+        }
 
     group["assignments"] = assignments
     group["is_distributed"] = True
@@ -189,13 +192,23 @@ def get_recipient(user_id: int, invite_code: str) -> Optional[Dict]:
     if str(user_id) not in group["assignments"]:
         return None
 
-    recipient_id = group["assignments"][str(user_id)]
+    assignment = group["assignments"][str(user_id)]
+
+    # Обратная совместимость: если assignment это строка (старый формат)
+    if isinstance(assignment, str):
+        recipient_id = assignment
+        qr_code_path = None
+    else:
+        recipient_id = assignment["receiver_id"]
+        qr_code_path = assignment.get("qr_code_path")
+
     recipient_info = group["participants"][recipient_id]
 
     return {
         "first_name": recipient_info["first_name"],
         "username": recipient_info["username"],
-        "wishlist": recipient_info.get("wishlist", "")
+        "wishlist": recipient_info.get("wishlist", ""),
+        "qr_code_path": qr_code_path
     }
 
 
@@ -211,4 +224,125 @@ def cancel_distribution(invite_code: str) -> bool:
     group["is_distributed"] = False
 
     save_db(data)
+    return True
+
+
+def save_qr_code_path(invite_code: str, giver_id: int, file_path: str) -> bool:
+    """Сохранение пути к QR-коду для дарителя"""
+    data = load_db()
+
+    if invite_code not in data["groups"]:
+        return False
+
+    group = data["groups"][invite_code]
+
+    if not group["is_distributed"]:
+        return False
+
+    if str(giver_id) not in group["assignments"]:
+        return False
+
+    assignment = group["assignments"][str(giver_id)]
+
+    # Обратная совместимость: конвертируем старый формат в новый
+    if isinstance(assignment, str):
+        group["assignments"][str(giver_id)] = {
+            "receiver_id": assignment,
+            "qr_code_path": file_path
+        }
+    else:
+        assignment["qr_code_path"] = file_path
+
+    save_db(data)
+    return True
+
+
+def get_qr_code_for_recipient(invite_code: str, receiver_id: int) -> Optional[str]:
+    """Получение пути к QR-коду для получателя (находит кто дарит ему подарок)"""
+    data = load_db()
+
+    if invite_code not in data["groups"]:
+        return None
+
+    group = data["groups"][invite_code]
+
+    if not group["is_distributed"]:
+        return None
+
+    # Ищем кто дарит подарок этому получателю
+    for giver_id, assignment in group["assignments"].items():
+        # Обратная совместимость
+        if isinstance(assignment, str):
+            recipient_id = assignment
+            qr_code_path = None
+        else:
+            recipient_id = assignment["receiver_id"]
+            qr_code_path = assignment.get("qr_code_path")
+
+        if recipient_id == str(receiver_id):
+            return qr_code_path
+
+    return None
+
+
+def has_qr_code(invite_code: str, giver_id: int) -> bool:
+    """Проверка наличия загруженного QR-кода у дарителя"""
+    data = load_db()
+
+    if invite_code not in data["groups"]:
+        return False
+
+    group = data["groups"][invite_code]
+
+    if not group["is_distributed"]:
+        return False
+
+    if str(giver_id) not in group["assignments"]:
+        return False
+
+    assignment = group["assignments"][str(giver_id)]
+
+    # Обратная совместимость
+    if isinstance(assignment, str):
+        return False
+
+    qr_code_path = assignment.get("qr_code_path")
+    return qr_code_path is not None and qr_code_path != ""
+
+
+def delete_qr_code_file(file_path: str) -> bool:
+    """Удаление файла QR-кода с диска"""
+    if not file_path or not os.path.exists(file_path):
+        return False
+
+    try:
+        os.remove(file_path)
+        return True
+    except Exception as e:
+        print(f"Ошибка при удалении файла {file_path}: {e}")
+        return False
+
+
+def delete_group(invite_code: str) -> bool:
+    """Удаление группы вместе со всеми QR-кодами"""
+    data = load_db()
+
+    if invite_code not in data["groups"]:
+        return False
+
+    group = data["groups"][invite_code]
+
+    # Удаляем все QR-коды группы
+    if group.get("is_distributed") and group.get("assignments"):
+        for giver_id, assignment in group["assignments"].items():
+            # Обратная совместимость
+            if isinstance(assignment, dict):
+                qr_code_path = assignment.get("qr_code_path")
+                if qr_code_path:
+                    delete_qr_code_file(qr_code_path)
+
+    # Удаляем группу из базы данных
+    del data["groups"][invite_code]
+    save_db(data)
+
     return True

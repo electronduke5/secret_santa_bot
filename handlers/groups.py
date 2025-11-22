@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 import database as db
 import keyboards as kb
 
@@ -25,13 +26,18 @@ class WishlistStates(StatesGroup):
 @router.callback_query(F.data == "create_group")
 async def create_group_start(callback: CallbackQuery, state: FSMContext):
     """Начало создания группы"""
-    await callback.message.edit_text(
-        "🎅 <b>Создание новой группы</b>\n\n"
-        "Введите название группы для Тайного Санты:\n"
-        "(например: <i>Офисный Санта 2025</i>)",
-        reply_markup=kb.cancel_action("back_to_menu"),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            "🎅 <b>Создание новой группы</b>\n\n"
+            "Введите название группы для Тайного Санты:\n"
+            "(например: <i>Офисный Санта 2025</i>)",
+            reply_markup=kb.cancel_action("back_to_menu"),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
     await state.set_state(CreateGroupStates.waiting_for_name)
     await callback.answer()
 
@@ -73,12 +79,17 @@ async def create_group_finish(message: Message, state: FSMContext):
 @router.callback_query(F.data == "join_group")
 async def join_group_start(callback: CallbackQuery, state: FSMContext):
     """Начало присоединения к группе"""
-    await callback.message.edit_text(
-        "👥 <b>Присоединиться к группе</b>\n\n"
-        "Введите пригласительный код, который вам отправил администратор группы:",
-        reply_markup=kb.cancel_action("back_to_menu"),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            "👥 <b>Присоединиться к группе</b>\n\n"
+            "Введите пригласительный код, который вам отправил администратор группы:",
+            reply_markup=kb.cancel_action("back_to_menu"),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
     await state.set_state(JoinGroupStates.waiting_for_code)
     await callback.answer()
 
@@ -139,20 +150,25 @@ async def show_my_groups(callback: CallbackQuery):
     """Показать список групп пользователя"""
     groups = db.get_user_groups(callback.from_user.id)
 
-    if not groups:
-        await callback.message.edit_text(
-            "📭 <b>У вас пока нет групп</b>\n\n"
-            "Создайте новую группу или присоединитесь к существующей!",
-            reply_markup=kb.main_menu(),
-            parse_mode="HTML"
-        )
-    else:
-        await callback.message.edit_text(
-            f"👥 <b>Ваши группы ({len(groups)}):</b>\n\n"
-            "Выберите группу для просмотра:",
-            reply_markup=kb.group_list_keyboard(groups),
-            parse_mode="HTML"
-        )
+    try:
+        if not groups:
+            await callback.message.edit_text(
+                "📭 <b>У вас пока нет групп</b>\n\n"
+                "Создайте новую группу или присоединитесь к существующей!",
+                reply_markup=kb.main_menu(),
+                parse_mode="HTML"
+            )
+        else:
+            await callback.message.edit_text(
+                f"👥 <b>Ваши группы ({len(groups)}):</b>\n\n"
+                "Выберите группу для просмотра:",
+                reply_markup=kb.group_list_keyboard(groups),
+                parse_mode="HTML"
+            )
+    except TelegramBadRequest as e:
+        # Игнорируем ошибку если сообщение не изменилось
+        if "message is not modified" not in str(e):
+            raise
 
     await callback.answer()
 
@@ -173,15 +189,36 @@ async def show_group_info(callback: CallbackQuery):
 
     status = "✅ Распределение завершено" if group["is_distributed"] else "⏳ Ожидание начала"
 
-    await callback.message.edit_text(
-        f"📝 <b>{group['name']}</b> {admin_label}\n\n"
-        f"👥 Участников: {len(group['participants'])}\n"
-        f"📊 Статус: {status}\n"
-        f"🔗 Код приглашения: <code>{invite_code}</code>\n\n"
-        f"Выберите действие:",
-        reply_markup=kb.group_info_keyboard(invite_code, is_admin, group["is_distributed"]),
-        parse_mode="HTML"
-    )
+    # Проверяем наличие QR-кодов
+    has_qr_code = False
+    recipient_has_qr = False
+    if group["is_distributed"]:
+        has_qr_code = db.has_qr_code(invite_code, callback.from_user.id)
+        qr_path = db.get_qr_code_for_recipient(invite_code, callback.from_user.id)
+        recipient_has_qr = qr_path is not None
+
+    try:
+        await callback.message.edit_text(
+            f"📝 <b>{group['name']}</b> {admin_label}\n\n"
+            f"👥 Участников: {len(group['participants'])}\n"
+            f"📊 Статус: {status}\n"
+            f"🔗 Код приглашения: <code>{invite_code}</code>\n\n"
+            f"Выберите действие:",
+            reply_markup=kb.group_info_keyboard(
+                invite_code,
+                is_admin,
+                group["is_distributed"],
+                user_id=callback.from_user.id,
+                has_qr_code=has_qr_code,
+                recipient_has_qr=recipient_has_qr
+            ),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        # Игнорируем ошибку если сообщение не изменилось
+        if "message is not modified" not in str(e):
+            raise
+
     await callback.answer()
 
 
@@ -252,13 +289,17 @@ async def set_wishlist_start(callback: CallbackQuery, state: FSMContext):
     current_wishlist = db.get_wishlist(callback.from_user.id, invite_code)
     current_text = f"\n\n<b>Текущий список:</b>\n{current_wishlist}" if current_wishlist else ""
 
-    await callback.message.edit_text(
-        f"🎁 <b>Список пожеланий</b>\n\n"
-        f"Введите ваши пожелания к подарку (например: книги, чай, сладости){current_text}\n\n"
-        f"Этот список увидит тот, кто будет дарить вам подарок.",
-        reply_markup=kb.cancel_action(f"group_info_{invite_code}"),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"🎁 <b>Список пожеланий</b>\n\n"
+            f"Введите ваши пожелания к подарку (например: книги, чай, сладости){current_text}\n\n"
+            f"Этот список увидит тот, кто будет дарить вам подарок.",
+            reply_markup=kb.cancel_action(f"group_info_{invite_code}"),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
     await state.update_data(group_code=invite_code)
     await state.set_state(WishlistStates.waiting_for_wishlist)
@@ -283,13 +324,24 @@ async def set_wishlist_finish(message: Message, state: FSMContext):
     success = db.set_wishlist(message.from_user.id, invite_code, wishlist)
 
     if success:
+        group = db.get_group(invite_code)
+        has_qr_code = False
+        recipient_has_qr = False
+        if group["is_distributed"]:
+            has_qr_code = db.has_qr_code(invite_code, message.from_user.id)
+            qr_path = db.get_qr_code_for_recipient(invite_code, message.from_user.id)
+            recipient_has_qr = qr_path is not None
+
         await message.answer(
             f"✅ <b>Список пожеланий сохранён!</b>\n\n"
             f"🎁 Ваши пожелания:\n{wishlist}",
             reply_markup=kb.group_info_keyboard(
                 invite_code,
                 is_admin=False,
-                is_distributed=db.get_group(invite_code)["is_distributed"]
+                is_distributed=group["is_distributed"],
+                user_id=message.from_user.id,
+                has_qr_code=has_qr_code,
+                recipient_has_qr=recipient_has_qr
             ),
             parse_mode="HTML"
         )
@@ -300,3 +352,85 @@ async def set_wishlist_finish(message: Message, state: FSMContext):
         )
 
     await state.clear()
+
+
+# Удаление группы
+@router.callback_query(F.data.startswith("delete_group_"))
+async def delete_group_confirm(callback: CallbackQuery):
+    """Подтверждение удаления группы"""
+    invite_code = callback.data.split("_")[-1]
+    group = db.get_group(invite_code)
+
+    if not group:
+        await callback.answer("❌ Группа не найдена", show_alert=True)
+        return
+
+    if group["admin_id"] != callback.from_user.id:
+        await callback.answer("❌ Только администратор может удалить группу", show_alert=True)
+        return
+
+    participants_count = len(group["participants"])
+    qr_count = 0
+
+    # Подсчитываем количество загруженных QR-кодов
+    if group.get("is_distributed") and group.get("assignments"):
+        for assignment in group["assignments"].values():
+            if isinstance(assignment, dict) and assignment.get("qr_code_path"):
+                qr_count += 1
+
+    await callback.message.edit_text(
+        f"⚠️ <b>Удаление группы</b>\n\n"
+        f"📝 Группа: <b>{group['name']}</b>\n"
+        f"👥 Участников: {participants_count}\n"
+        f"📊 Статус: {'✅ Распределено' if group['is_distributed'] else '⏳ Не распределено'}\n"
+        f"📱 QR-кодов загружено: {qr_count}\n\n"
+        f"🚨 <b>ВНИМАНИЕ!</b> Это действие необратимо!\n\n"
+        f"Будут удалены:\n"
+        f"• Вся информация о группе\n"
+        f"• Список участников\n"
+        f"• Все распределения\n"
+        f"• Все загруженные QR-коды\n"
+        f"• Списки пожеланий\n\n"
+        f"Вы уверены, что хотите удалить эту группу?",
+        reply_markup=kb.confirm_delete_group(invite_code),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_delete_"))
+async def delete_group_execute(callback: CallbackQuery):
+    """Выполнение удаления группы"""
+    invite_code = callback.data.split("_")[-1]
+    group = db.get_group(invite_code)
+
+    if not group:
+        await callback.answer("❌ Группа не найдена", show_alert=True)
+        return
+
+    if group["admin_id"] != callback.from_user.id:
+        await callback.answer("❌ Только администратор может удалить группу", show_alert=True)
+        return
+
+    group_name = group["name"]
+
+    # Удаляем группу
+    success = db.delete_group(invite_code)
+
+    if success:
+        await callback.message.edit_text(
+            f"✅ <b>Группа удалена</b>\n\n"
+            f"Группа <b>\"{group_name}\"</b> успешно удалена.\n"
+            f"Все связанные данные и QR-коды были удалены.",
+            reply_markup=kb.main_menu(),
+            parse_mode="HTML"
+        )
+        await callback.answer("✅ Группа удалена")
+    else:
+        await callback.message.edit_text(
+            f"❌ <b>Ошибка при удалении группы</b>\n\n"
+            f"Не удалось удалить группу. Попробуйте позже.",
+            reply_markup=kb.main_menu(),
+            parse_mode="HTML"
+        )
+        await callback.answer("❌ Ошибка удаления", show_alert=True)

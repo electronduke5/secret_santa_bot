@@ -1,5 +1,6 @@
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
 import database as db
 import keyboards as kb
 
@@ -31,18 +32,23 @@ async def start_distribution_confirm(callback: CallbackQuery):
         )
         return
 
-    await callback.message.edit_text(
-        f"🎲 <b>Начать распределение?</b>\n\n"
-        f"📝 Группа: {group['name']}\n"
-        f"👥 Участников: {participants_count}\n\n"
-        f"⚠️ <b>Внимание!</b> После распределения:\n"
-        f"• Нельзя будет добавить новых участников\n"
-        f"• Каждый участник получит сообщение с именем того, кому нужно подарить подарок\n"
-        f"• Вы можете отменить распределение и сделать его заново\n\n"
-        f"Вы уверены?",
-        reply_markup=kb.confirm_distribution(invite_code),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"🎲 <b>Начать распределение?</b>\n\n"
+            f"📝 Группа: {group['name']}\n"
+            f"👥 Участников: {participants_count}\n\n"
+            f"⚠️ <b>Внимание!</b> После распределения:\n"
+            f"• Нельзя будет добавить новых участников\n"
+            f"• Каждый участник получит сообщение с именем того, кому нужно подарить подарок\n"
+            f"• Вы можете отменить распределение и сделать его заново\n\n"
+            f"Вы уверены?",
+            reply_markup=kb.confirm_distribution(invite_code),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
     await callback.answer()
 
 
@@ -75,10 +81,11 @@ async def confirm_distribution(callback: CallbackQuery):
     success_count = 0
     failed_users = []
 
-    for giver_id, receiver_id in group["assignments"].items():
+    for giver_id, assignment in group["assignments"].items():
+        giver_info = group["participants"][giver_id]
         try:
+            receiver_id = assignment["receiver_id"]
             recipient_info = group["participants"][receiver_id]
-            giver_info = group["participants"][giver_id]
 
             username_text = f"@{recipient_info['username']}" if recipient_info['username'] else ""
             wishlist_text = f"\n\n🎁 <b>Пожелания:</b>\n{recipient_info['wishlist']}" if recipient_info['wishlist'] else "\n\n(Список пожеланий пока не указан)"
@@ -105,11 +112,27 @@ async def confirm_distribution(callback: CallbackQuery):
         result_text += f"\n⚠️ Не удалось отправить сообщения:\n" + "\n".join([f"• {name}" for name in failed_users])
         result_text += "\n\nПопросите этих участников написать боту /start"
 
-    await callback.message.edit_text(
-        result_text,
-        reply_markup=kb.group_info_keyboard(invite_code, is_admin=True, is_distributed=True),
-        parse_mode="HTML"
-    )
+    # Получаем информацию о QR-кодах для админа
+    has_qr_code = db.has_qr_code(invite_code, callback.from_user.id)
+    qr_path = db.get_qr_code_for_recipient(invite_code, callback.from_user.id)
+    recipient_has_qr = qr_path is not None
+
+    try:
+        await callback.message.edit_text(
+            result_text,
+            reply_markup=kb.group_info_keyboard(
+                invite_code,
+                is_admin=True,
+                is_distributed=True,
+                user_id=callback.from_user.id,
+                has_qr_code=has_qr_code,
+                recipient_has_qr=recipient_has_qr
+            ),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
     await callback.answer("🎉 Распределение завершено!")
 
@@ -131,12 +154,21 @@ async def cancel_distribution(callback: CallbackQuery):
     # Отменяем распределение
     db.cancel_distribution(invite_code)
 
-    await callback.message.edit_text(
-        f"🔄 <b>Распределение отменено</b>\n\n"
-        f"Вы можете запустить распределение заново.",
-        reply_markup=kb.group_info_keyboard(invite_code, is_admin=True, is_distributed=False),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"🔄 <b>Распределение отменено</b>\n\n"
+            f"Вы можете запустить распределение заново.",
+            reply_markup=kb.group_info_keyboard(
+                invite_code,
+                is_admin=True,
+                is_distributed=False,
+                user_id=callback.from_user.id
+            ),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
     await callback.answer("✅ Распределение отменено")
 

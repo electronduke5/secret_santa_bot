@@ -29,7 +29,7 @@ def group_list_keyboard(groups: List[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def group_info_keyboard(invite_code: str, is_admin: bool, is_distributed: bool) -> InlineKeyboardMarkup:
+def group_info_keyboard(invite_code: str, is_admin: bool, is_distributed: bool, user_id: int = None, has_qr_code: bool = False, recipient_has_qr: bool = False) -> InlineKeyboardMarkup:
     """Клавиатура с действиями для группы"""
     buttons = []
 
@@ -69,7 +69,35 @@ def group_info_keyboard(invite_code: str, is_admin: bool, is_distributed: bool) 
             callback_data=f"my_recipient_{invite_code}"
         )])
 
+        # Кнопки для работы с QR-кодами (только после распределения)
+        if user_id:
+            # Кнопка загрузки/замены QR-кода для дарителя
+            if has_qr_code:
+                buttons.append([InlineKeyboardButton(
+                    text="🔄 Заменить QR-код",
+                    callback_data=f"upload_qr_{invite_code}"
+                )])
+            else:
+                buttons.append([InlineKeyboardButton(
+                    text="📤 Загрузить QR-код",
+                    callback_data=f"upload_qr_{invite_code}"
+                )])
+
+            # Кнопка просмотра QR-кода для получателя
+            if recipient_has_qr:
+                buttons.append([InlineKeyboardButton(
+                    text="📱 Посмотреть QR-код получения",
+                    callback_data=f"view_qr_{invite_code}"
+                )])
+
     buttons.append([InlineKeyboardButton(text="◀️ К моим группам", callback_data="my_groups")])
+
+    # Кнопка удаления группы (только для админа)
+    if is_admin:
+        buttons.append([InlineKeyboardButton(
+            text="🗑️ Удалить группу",
+            callback_data=f"delete_group_{invite_code}"
+        )])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -93,4 +121,12 @@ def cancel_action(callback_data: str) -> InlineKeyboardMarkup:
     """Кнопка отмены действия"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data=callback_data)]
+    ])
+
+
+def confirm_delete_group(invite_code: str) -> InlineKeyboardMarkup:
+    """Подтверждение удаления группы"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, удалить навсегда", callback_data=f"confirm_delete_{invite_code}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"group_info_{invite_code}")]
     ])

@@ -10,6 +10,8 @@ services:
     volumes:
       # Mount data.json for persistence
       - ./data.json:/app/data.json
+      # Mount qr_codes directory for QR code storage
+      - ./qr_codes:/app/qr_codes
     logging:
       driver: "json-file"
       options:
