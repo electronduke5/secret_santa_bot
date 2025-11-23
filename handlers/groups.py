@@ -243,10 +243,17 @@ async def show_participants(callback: CallbackQuery):
             f"{admin_mark}{user_info['first_name']} {username}"
         )
 
-    await callback.answer(
-        f"👥 Участники ({len(participants_list)}):\n\n" + "\n".join(participants_list),
-        show_alert=True
-    )
+    try:
+        await callback.message.edit_text(
+            f"👥 <b>Участники группы ({len(participants_list)}):</b>\n\n" + "\n".join(participants_list),
+            reply_markup=kb.back_to_group(invite_code),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
+    await callback.answer()
 
 
 # Пригласительная ссылка (только для админа)

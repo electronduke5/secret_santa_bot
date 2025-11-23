@@ -130,3 +130,10 @@ def confirm_delete_group(invite_code: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Да, удалить навсегда", callback_data=f"confirm_delete_{invite_code}")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data=f"group_info_{invite_code}")]
     ])
+
+
+def back_to_group(invite_code: str) -> InlineKeyboardMarkup:
+    """Кнопка возврата к информации о группе"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад", callback_data=f"group_info_{invite_code}")]
+    ])
